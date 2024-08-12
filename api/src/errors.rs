@@ -1,46 +1,31 @@
-use std::{error::Error, fmt};
-
 use axum::extract::multipart::MultipartError;
+use thiserror::Error;
 use tokio::sync::AcquireError;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum AppError {
+    #[error("Missing file name in multipart form-data.")]
     MissingFileName,
+    #[error("Failed to read data from the field.")]
     FailedToReadData,
+    #[error("Invalid image format encountered.")]
     InvalidImageFormat,
+    #[error("Image conversion to WebP failed.")]
     ConversionFailed,
+    #[error("No images were processed.")]
     NoImagesProcessed,
+    #[error("Failed to start a new file in the ZIP archive.")]
     ZipStartError,
+    #[error("Failed to write data to the ZIP archive.")]
     ZipWriteError,
+    #[error("Failed to finish the ZIP archive.")]
     ZipFinishError,
+    #[error("An error occurred while processing the multipart form-data.")]
     ProcessingError,
+    #[error("Invalid file name encountered.")]
     InvalidFileName,
-    MultipartError(MultipartError),
-    AcquireError(AcquireError),
-}
-
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for AppError {}
-
-impl From<MultipartError> for AppError {
-    fn from(error: MultipartError) -> Self {
-        AppError::MultipartError(error)
-    }
-}
-
-impl From<AcquireError> for AppError {
-    fn from(error: AcquireError) -> Self {
-        AppError::AcquireError(error)
-    }
-}
-
-impl From<AppError> for Box<dyn Error + Send> {
-    fn from(error: AppError) -> Self {
-        Box::new(error)
-    }
+    #[error("Multipart error: {0}")]
+    MultipartError(#[from] MultipartError),
+    #[error("Acquire error: {0}")]
+    AcquireError(#[from] AcquireError),
 }

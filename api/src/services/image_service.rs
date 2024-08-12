@@ -1,13 +1,16 @@
 use crate::errors::AppError;
 use axum::extract::Multipart;
 use load_image::{load_data, Image, ImageData};
-use std::io::{Cursor, Write};
+use std::{
+    io::{Cursor, Write},
+    path::Path,
+};
 use webp::Encoder;
 use zip::{write::SimpleFileOptions, ZipWriter};
 
 pub async fn process_images(multipart: &mut Multipart) -> Result<Vec<u8>, AppError> {
     let mut webp_images = Vec::new();
-    
+
     while let Some(field) = multipart
         .next_field()
         .await
@@ -21,11 +24,13 @@ pub async fn process_images(multipart: &mut Multipart) -> Result<Vec<u8>, AppErr
             .bytes()
             .await
             .map_err(|_| AppError::FailedToReadData)?;
-        
+
         let img = load_image(&data).map_err(|_| AppError::InvalidImageFormat)?;
         let webp_image = convert_to_webp(img).ok_or(AppError::ConversionFailed)?;
 
-        webp_images.push((filename, webp_image));
+        let webp_filename = format!("{}.webp", filename_without_extension(&filename).ok_or(AppError::InvalidFileName)?);
+
+        webp_images.push((webp_filename, webp_image));
     }
 
     if webp_images.is_empty() {
@@ -48,8 +53,7 @@ pub async fn process_images(multipart: &mut Multipart) -> Result<Vec<u8>, AppErr
                 .map_err(|_| AppError::ZipWriteError)?;
         }
 
-        zip.finish()
-            .map_err(|_| AppError::ZipFinishError)?;
+        zip.finish().map_err(|_| AppError::ZipFinishError)?;
     }
 
     Ok(zip_data)
@@ -89,5 +93,13 @@ fn convert_to_webp(img: Image) -> Option<Vec<u8>> {
     }
 
     let encoder = Encoder::from_rgb(&bitmap, width, height);
-    Some(encoder.encode(80.0).to_vec())
+    Some(encoder.encode(75.0).to_vec())
+}
+
+fn filename_without_extension(filename: &str) -> String {
+    Path::new(filename)
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string()
 }
