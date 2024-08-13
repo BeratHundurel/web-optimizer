@@ -1419,6 +1419,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "load_image",
+ "rayon",
  "thiserror",
  "tokio",
  "webp",

@@ -1,6 +1,7 @@
 use crate::errors::AppError;
 use axum::extract::Multipart;
 use load_image::{load_data, Image, ImageData};
+use rayon::prelude::*;
 use std::{
     io::{Cursor, Write},
     path::Path,
@@ -8,9 +9,23 @@ use std::{
 use webp::Encoder;
 use zip::{write::SimpleFileOptions, ZipWriter};
 
-pub async fn process_images(multipart: &mut Multipart) -> Result<Vec<u8>, AppError> {
-    let mut webp_images = Vec::new();
+// Process images from multipart form-data
+pub async fn convert_images_to_webp(multipart: &mut Multipart) -> Result<Vec<u8>, AppError> {
+    let webp_images = collect_images(multipart).await?;
 
+    if webp_images.is_empty() {
+        return Err(AppError::NoImagesProcessed);
+    }
+
+    let zip_data = create_zip(webp_images)?;
+
+    Ok(zip_data)
+}
+
+async fn collect_images(multipart: &mut Multipart) -> Result<Vec<(String, Vec<u8>)>, AppError> {
+    let mut image_data = Vec::new();
+
+    // Collect the data and filename synchronously
     while let Some(field) = multipart
         .next_field()
         .await
@@ -23,44 +38,51 @@ pub async fn process_images(multipart: &mut Multipart) -> Result<Vec<u8>, AppErr
         let data = field
             .bytes()
             .await
-            .map_err(|_| AppError::FailedToReadData)?;
+            .map_err(|_| AppError::FailedToReadData)?
+            .to_vec();
 
-        let img = load_image(&data).map_err(|_| AppError::InvalidImageFormat)?;
-        let webp_image = convert_to_webp(img).ok_or(AppError::ConversionFailed)?;
-
-        let webp_filename = format!("{}.webp", filename_without_extension(&filename).ok_or(AppError::InvalidFileName)?);
-
-        webp_images.push((webp_filename, webp_image));
+        image_data.push((data, filename));
     }
 
-    if webp_images.is_empty() {
-        return Err(AppError::NoImagesProcessed);
-    }
+    // Process images in parallel using Rayon
+    let webp_images: Vec<_> = image_data
+        .into_par_iter()
+        .map(|(data, filename)| process_image(data, filename))
+        .collect::<Result<Vec<_>, _>>()?;
 
+    Ok(webp_images)
+}
+
+fn process_image(data: Vec<u8>, filename: String) -> Result<(String, Vec<u8>), AppError> {
+    let img = load_image(&data).map_err(|_| AppError::InvalidImageFormat)?;
+    let webp_image = convert_to_webp(img).ok_or(AppError::ConversionFailed)?;
+    let webp_filename = format!("{}.webp", filename_without_extension(&filename));
+    Ok((webp_filename, webp_image))
+}
+
+// Create a ZIP file from WebP images
+fn create_zip(webp_images: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>, AppError> {
     let mut zip_data = Vec::new();
-    {
-        let cursor = Cursor::new(&mut zip_data);
-        let mut zip = ZipWriter::new(cursor);
+    let cursor = Cursor::new(&mut zip_data);
+    let mut zip = ZipWriter::new(cursor);
 
-        for (filename, image_data) in webp_images {
-            let options = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Stored)
-                .unix_permissions(0o755);
+    for (filename, image_data) in webp_images {
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o755);
 
-            zip.start_file(filename, options)
-                .map_err(|_| AppError::ZipStartError)?;
-            zip.write_all(&image_data)
-                .map_err(|_| AppError::ZipWriteError)?;
-        }
-
-        zip.finish().map_err(|_| AppError::ZipFinishError)?;
+        zip.start_file(filename, options)
+            .map_err(|_| AppError::ZipStartError)?;
+        zip.write_all(&image_data)
+            .map_err(|_| AppError::ZipWriteError)?;
     }
 
+    zip.finish().map_err(|_| AppError::ZipFinishError)?;
     Ok(zip_data)
 }
 
-pub fn load_image(data: &[u8]) -> Result<Image, ()> {
-    load_data(data).map_err(|_| ())
+fn load_image(data: &[u8]) -> Result<Image, AppError> {
+    load_data(data).map_err(|_| AppError::LoadError)
 }
 
 fn convert_to_webp(img: Image) -> Option<Vec<u8>> {
@@ -93,6 +115,7 @@ fn convert_to_webp(img: Image) -> Option<Vec<u8>> {
     }
 
     let encoder = Encoder::from_rgb(&bitmap, width, height);
+ 
     Some(encoder.encode(75.0).to_vec())
 }
 

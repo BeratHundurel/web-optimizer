@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 axum = {version = "0.7.5", features = ["multipart"] }
 load_image = "3.1.6"
+rayon = "1.10.0"
 thiserror = "1.0.63"
 tokio = { version = "1.39.2", features = ["full"] }
 webp = "0.3.0"

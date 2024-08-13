@@ -22,8 +22,8 @@ pub enum AppError {
     ZipFinishError,
     #[error("An error occurred while processing the multipart form-data.")]
     ProcessingError,
-    #[error("Invalid file name encountered.")]
-    InvalidFileName,
+    #[error("Failed to load image.")]
+    LoadError,
     #[error("Multipart error: {0}")]
     MultipartError(#[from] MultipartError),
     #[error("Acquire error: {0}")]
