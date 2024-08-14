@@ -24,6 +24,8 @@ pub enum AppError {
     ProcessingError,
     #[error("Failed to load image.")]
     LoadError,
+    #[error("Failed to minify the CSS or JS.")]
+    MinifyError,
     #[error("Multipart error: {0}")]
     MultipartError(#[from] MultipartError),
     #[error("Acquire error: {0}")]

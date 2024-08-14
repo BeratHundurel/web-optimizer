@@ -11,3 +11,4 @@ thiserror = "1.0.63"
 tokio = { version = "1.39.2", features = ["full"] }
 webp = "0.3.0"
 zip = "2.1.6"
+minifier = "0.3"
